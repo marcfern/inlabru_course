@@ -28,14 +28,13 @@ y = beta[1] + beta[2] * x + rnorm(n, sd = sd_error)
 df = data.frame(y = y, x = x)  
 
 
+cmp=~-1+beta_0(1)+beta_1(x,model="linear")
 
+eta=y ~ beta_0 + beta_1
 
-
-
-
-
-
-
+lik=bru_obs(formula=eta,
+            family="gaussian",
+            data=df)
 
 ## -----------------------------------------------------------------------------
 #| code-summary: "Fit LM in `inlabru`"
@@ -55,9 +54,6 @@ pred = predict(fit.lm, new_data, ~ beta_0 + beta_1,
                n.samples = 1000)
 
 
-
-
-
 ## -----------------------------------------------------------------------------
 #| code-fold: true
 #| fig-cap: Data and 95% credible intervals
@@ -75,6 +71,11 @@ pred %>% ggplot() +
   geom_line(aes(x, q0.975), linetype = "dashed")+
   xlab("Covariate") + ylab("Observations")
 
+
+#Generate predictions for a new observation with x0=0.45
+new_data2 = data.frame(x =  0.45)
+pred2 = predict(fit.lm, new_data2, ~ beta_0 + beta_1,
+               n.samples = 1000)
 
 
 ## ----child="practicals/LMM_ex.qmd"--------------------------------------------
@@ -167,7 +168,8 @@ lambda = exp(beta[1] + beta[2] * x)
 y = rpois(n, lambda  = lambda)
 df = data.frame(y = y, x = x)  
 
-
+cmp=~-1+beta_0(1)+beta_1(x,model="linear")
+eta=y~ beta_0 + beta_1
 
 
 
@@ -235,4 +237,25 @@ psi = plogis(alpha[1] + alpha[2] * w)
 y = rbinom(n = n, size = 1, prob =  psi) # set size = 1 to draw binary observations
 df_logis = data.frame(y = y, w = w)  
 
+cmp=~-1+beta_0(1)+beta_1(w,model="linear")
+eta=y ~ beta_0 + beta_1
 
+lik=bru_obs(formula=eta,
+            family="binomial",
+            data=df_logis)
+fit_logis = bru(cmp, lik)
+summary(fit_logis)
+
+#create new dataframe with 10 NA values
+new_data_logis = data.frame(w = c(df_logis$w, runif(10)),
+                      y = c(df_logis$y, rep(NA,10)))
+#prediction formula using plogis for the logit link
+pred_fml_logis <- ~ plogis(beta_0 + beta_1)
+pred_logis <- predict(fit_logis, new_data_logis, pred_fml_logis)
+
+#plot prediction
+pred_logis %>% ggplot() + 
+  geom_point(aes(x=w,y=y), alpha = 0.3) +
+  geom_line(aes(x=w,mean)) +
+    geom_ribbon(aes(x = w, ymax = q0.975, ymin = q0.025),fill = "blue", alpha = 0.3)+
+  xlab("Covariate") + ylab("Observations (probabilities)")
