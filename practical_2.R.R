@@ -184,3 +184,6 @@ ICC <-  predict(fit,PygmyWFBC, ~ {
 n.samples = 1000
 )
 
+ICC
+
+
