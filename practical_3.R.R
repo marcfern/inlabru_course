@@ -154,6 +154,9 @@ Erie.df = greatLakes.df %>% filter(Lakes == "Erie")
 
 cmp =  ~ -1 + alpha(1) + ut(t.idx,model = "ar1")
 
+#check info
+inla.doc("ar1")
+
 formula = height ~ alpha + ut
 # Observational model
 lik =  bru_obs(formula = height ~.,
