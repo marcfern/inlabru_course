@@ -517,7 +517,7 @@ region = poly %>%
   summarise(geometry = st_combine(geometry)) %>%
   st_cast("POLYGON") 
   
-ggplot() + geom_sf(data = region, alpha = 0) + geom_sf(data = pp)  
+ggplot() + geom_sf(data = region, alpha = 0) + geom_sf(data = pp)
 
 
 ## -----------------------------------------------------------------------------
@@ -537,8 +537,15 @@ lik = bru_obs(data = pp,
               ips = ips)
 fit1 = bru(cmp, lik)
 
+post_int=inla.tmarginal(function(x) exp(x), fit1$marginals.fixed$beta_0)
 
+ggplot()+
+  geom_line(data = data.frame(post_int), aes(x = x, y = y)) +
+  ggtitle("Posterior of the intensity")
 
+post_int = inla.tmarginal(function(x) st_area(region)* exp(x), fit1$marginals.fixed$beta_0)
+post_int %>% ggplot() + geom_line(aes(x,y)) +
+  geom_vline(xintercept = dim(pp)[1])
 
 ## -----------------------------------------------------------------------------
 #|label: fig-altitude
@@ -576,7 +583,7 @@ lik = bru_obs(data = pp,
               ips = ips)
 fit2 = bru(cmp, lik)
 
-
+summary(fit2)
 
 
 ## -----------------------------------------------------------------------------
@@ -587,16 +594,31 @@ ips2 = st_sf(geometry = st_sample(region,
             type = "regular"))
 ips2$weight = st_area(region) / n.int2
 
+lik = bru_obs(data = pp,
+              family = "cp",
+              formula = formula,
+              ips = ips2)
+fit3 = bru(cmp, lik)
 
-
+summary(fit3)
 
 ## -----------------------------------------------------------------------------
 est_grid = st_as_sf(data.frame(crds(elev_raster)), coords = c("x","y"))
 est_grid  = st_intersection(est_grid, region)
 
+preds = predict(fit2, est_grid, ~ data.frame(log_scale= Intercept + elev,
+                                              lin_scale= exp(Intercept + elev)))
+
+preds$log_scale %>% 
+  ggplot() +
+  geom_sf(aes(color = mean)) +
+  scale_color_scico()
 
 
-
+preds$lin_scale %>% 
+  ggplot() +
+  geom_sf(aes(color = mean)) +
+  scale_color_scico()
 ## -----------------------------------------------------------------------------
 N_fires = generate(fit2, ips,
                       formula = ~ {
@@ -661,6 +683,15 @@ ggplot() + geom_sf(data = ips, aes(color = weight)) +
 #| echo: false
 #| eval: true
 #| warning: true
+cmp = ~ Intercept(1) + space(geometry, model = spde_model) + elev(elev_raster, model = "linear")
+
+formula = geometry ~ Intercept + space + elev
+
+lik = bru_obs("cp",
+              formula = formula,
+              data = pp,
+              ips = ips)
+
 
 fit3 = bru(cmp, lik)
 
@@ -683,7 +714,23 @@ elev_rast_p <- stars::st_rasterize(re_df) %>% rast()
 ggplot() + geom_spatraster(data = elev_rast_p) 
 
 
+pxl = fm_pixels(mesh, mask= region, dims = c(200,200))
+preds = predict(fit3, pxl, ~data.frame(spde = space,
+                                       log_int = Intercept + space + elev))
 
+ggplot(data= preds$spde) + 
+  geom_sf(aes(color = mean)) + 
+  scale_color_scico() +
+  ggtitle("spde mean") +
+  ggplot(data=preds$spde ) +
+  geom_sf(aes(color = sd)) +
+  scale_color_scico() +
+  ggtitle("spde sd") +
+  
+  ggplot(data=preds$log_int) + 
+  geom_sf(aes(color = mean)) + 
+  scale_color_scico() +
+  ggtitle("log-int mean")
 
 
 ## -----------------------------------------------------------------------------
