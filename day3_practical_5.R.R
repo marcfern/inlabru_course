@@ -58,19 +58,19 @@ diag(Q) = diag
 #| echo: true
 #| eval: false
 
-# cmp = ~ Intercept(1) + space(...) + iid(...)
-# 
-# formula = ...
-# 
-# 
-# lik = bru_obs(formula = formula,
-#               family = ...,
-#               E = ...,
-#               data = ...)
-# 
-# fit = bru(cmp, lik)
-# 
+cmp = ~ Intercept(1) + space(space, model="besag", graph=Q) + iid(space,model="iid")
+ 
+formula = observed~Intercept + space + iid
 
+lik = bru_obs(formula = formula,
+               family = "poisson",
+               E = expected,
+               data = resp_cases)
+
+ fit = bru(cmp, lik)
+
+ summary(fit)
+ fit$summary.hyperpar
 
 ## -----------------------------------------------------------------------------
 
@@ -150,8 +150,46 @@ pred_counts = data.frame(observed = resp_cases$observed,
                          vv = apply(sim_counts,1,var)
                          )
 
+ggplot() + 
+  geom_point(data = pred_counts, aes(observed, m, color = "Pred_obs")) + 
+  geom_errorbar(data = pred_counts, aes(observed, ymin = q1, ymax = q2, color = "Pred_obs")) +
+  geom_point(data = pred$cases, aes(observed, mean, color = "Pred_means")) + 
+  geom_errorbar(data = pred$cases, aes(observed, ymin = q0.025, ymax = q0.975, color = "Pred_means")) +
+  
+  geom_abline(intercept = 0, slope =1)
+
+#adding pm10 as covariate (first as linear effect)
+
+cmp<- ~ Intercept(1) + space(space, model="besag", graph=Q) + iid(space,model="iid") +
+  pm10(pm10, model="linear")
+
+formula = observed~ Intercept + space + iid + pm10
+
+lik = bru_obs(formula = formula,
+               family = "poisson",
+               E = expected,
+               data = resp_cases)
+ fit2 = bru(cmp, lik)
+
+#now as smooth using rw2
+ 
+resp_cases$pm10_grouped = inla.group(resp_cases$pm10)
+  
+cmp<- ~ Intercept(1) + space(space, model="besag", graph=Q) + iid(space,model="iid") +
+  pm10_grouped(pm10_grouped, model="rw2")
+
+formula = observed~ Intercept + space + iid + pm10_grouped
+
+lik= bru_obs(formula = formula,
+               family = "poisson",
+               E = expected,
+               data = resp_cases)
+ fit3 = bru(cmp, lik)
+summary(fit3)
 
 
+fit3$summary.random$pm10_grouped %>% ggplot() + geom_line(aes(ID,mean)) +
+    geom_ribbon(aes(ID, ymin =`0.025quant`, ymax = `0.975quant`), alpha = 0.5)
 ## ----child="practicals/Geostat_ex.qmd"----------------------------------------
 
 ## -----------------------------------------------------------------------------
@@ -311,10 +349,17 @@ lik = bru_obs(formula = formula,
 ## -----------------------------------------------------------------------------
 fit1 = bru(cmp,lik)
 
+fit1$marginals.hyperpar$`Range for space`
 
+ggplot() + 
+  geom_line(data = data.frame(fit1$marginals.hyperpar$`Range for space`), aes(x = x, y = y)) +
+  geom_line(data = dens_prior_range(100,0.5), aes(x = x, y = y), color = "red") +
+  ggtitle("Posterior and prior for the range parameter")
 
-
-
+ggplot() + 
+  geom_line(data = data.frame(fit1$marginals.hyperpar$`Stdev for space`), aes(x = x, y = y)) +
+  geom_line(data = dens_prior_sd(1,0.5), aes(x = x, y = y), color = "red") +
+  ggtitle("Posterior and prior for the standard deviation parameter")
 
 ## -----------------------------------------------------------------------------
 pxl = fm_pixels(mesh)
@@ -337,7 +382,10 @@ pxl1 = data.frame(crds(depth_r),
        filter(!is.na(depth)) %>%
 st_as_sf(coords = c("x","y"))
 
-
+preds_pxl1<-predict(fit1, pxl1, ~data.frame(spatial = space,
+                                      total = Intercept + space))
+ggplot()+geom_sf(data=preds_pxl1$total,aes(color=mean))+scale_color_scico()+ggtitle("Posterior mean at depth locations")
+ggplot() + geom_sf(data = preds_pxl1$total,aes(color = sd)) + scale_color_scico() + ggtitle("Posterior sd")
 
 
 ## -----------------------------------------------------------------------------
@@ -359,6 +407,21 @@ pp %>% select(-depth) %>%
 
 
 ## -----------------------------------------------------------------------------
+cmp = ~ Intercept(1) + space(geometry, model = spde_model3) +
+  covariate(depth_r$depth_scaled, model = "linear")
+
+formula = present ~ Intercept  + space + covariate
+
+lik = bru_obs(formula = formula, 
+              data = pcod_sf, 
+              family = "binomial")
+
+
+fit2 = bru(cmp, lik)
+
+pred_linear<-predict(fit2, pxl1, ~ inv_logit(Intercept + space + covariate))
+ggplot() + geom_sf(data = pred_linear, aes(color = mean)) + scale_color_scico(direction = -1) + ggtitle("Sample from the fitted model with linear depth effect")
+
 
 # create the grouped variable
 depth_r$depth_group = inla.group(values(depth_r$depth_scaled))
@@ -387,11 +450,19 @@ fit3$summary.random$covariate %>%
 ## -----------------------------------------------------------------------------
 #| eval: false
 
-# inv_logit = function(x) (1+exp(-x))^(-1)
+ inv_logit = function(x) (1+exp(-x))^(-1)
+ 
+ 
+ # produce predictions
+ pred3 = predict(fit3, pxl1, ~inv_logit(Intercept + space + covariate))
 
+ # plot predictions
 
-
-## ----child="practicals/PointProcess_ex.qmd"-----------------------------------
+ pred3 %>% ggplot() + 
+   geom_sf(aes(color = mean)) +
+   scale_color_scico(direction = -1) +
+   ggtitle("Sample from the fitted model")
+# ----child="practicals/PointProcess_ex.qmd"-----------------------------------
 
 ## -----------------------------------------------------------------------------
 #| echo: false
